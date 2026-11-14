@@ -7,7 +7,7 @@
   const BOOST = { name: 'Boost', everyMs: 152500 };       // page shows 2m 30s cooldown
   const COLLAB = {
     everyMs: 602000,                                       // cooldown seen in logs: 600 s
-    target: window.COLLAB_TARGET_CHANNEL_ID || 'UCTqJpW96pPJ4rhyqXBAvs0w',
+    target: window.COLLAB_TARGET_CHANNEL_ID || 'UCg0qWTbn3R6j5K7YWbrMLNw',
     waitAfterTypeMs: 1500,
   };
   const DISSTRACK = {
