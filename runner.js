@@ -109,6 +109,12 @@ async function main() {
     console.log(`Collab target channel for this job: ${collabTarget}`);
   }
 
+  // Inject the scripts into EVERY frame at document start (the grind panel may live in an iframe)
+  for (const { filename, source } of scripts) {
+    await context.addInitScript({ content: `${source}\n//# sourceURL=${filename}` });
+    console.log(`Injecting ${filename} into all frames.`);
+  }
+
   // Open the page, retrying a few times on temporary network/DNS errors
   for (let attempt = 1; ; attempt++) {
     try {
@@ -122,12 +128,7 @@ async function main() {
   }
   console.log("Page loaded. Evaluating scripts in the same page.");
 
-  for (const { filename, source } of scripts) {
-    console.log(`Evaluating ${filename}.`);
-    await page.evaluate(({ source, filename }) => {
-      window.eval(`${source}\n//# sourceURL=${filename}`);
-    }, { source, filename });
-  }
+  // (scripts were already injected into all frames before navigation)
 
   console.log("Scripts evaluated. Keeping the workflow alive.");
 
@@ -145,16 +146,42 @@ async function main() {
     });
   };
 
+  // The grind panel can be inside an iframe, so search every frame of the page
+  async function findFrame(getLocator) {
+    for (const f of page.frames()) {
+      try {
+        if ((await getLocator(f).count()) > 0) return f;
+      } catch {}
+    }
+    return null;
+  }
+
+  async function waitForFrame(getLocator, timeoutMs) {
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end) {
+      const f = await findFrame(getLocator);
+      if (f) return f;
+      await page.waitForTimeout(1000);
+    }
+    return null;
+  }
+
+  const tileLocator = (name) => (f) => f.getByText(name, { exact: true });
+  const fieldLocator = () => (f) => f.locator('input[placeholder="Channel name or ID"]');
+
   const clickTile = (name) => async () => {
-    await page.getByText(name, { exact: true }).first().click({ timeout: 5000 });
+    const f = await findFrame(tileLocator(name));
+    if (!f) throw new Error(`"${name}" not found in any frame`);
+    await f.getByText(name, { exact: true }).first().click({ timeout: 5000 });
   };
 
   // index 0 = Collab field, index 1 = Disstrack field
   const useField = (label, index, target) => async () => {
-    const input = page.locator('input[placeholder="Channel name or ID"]').nth(index);
-    await input.fill(target, { timeout: 5000 });
+    const f = await findFrame(fieldLocator());
+    if (!f) throw new Error("channel field not found in any frame");
+    await f.locator('input[placeholder="Channel name or ID"]').nth(index).fill(target, { timeout: 5000 });
     await page.waitForTimeout(1500);
-    await page.getByRole("button", { name: label, exact: true }).click({ timeout: 5000 });
+    await f.getByRole("button", { name: label, exact: true }).click({ timeout: 5000 });
     console.log(`[grind] ${label} clicked for ${target}`);
   };
 
@@ -165,9 +192,10 @@ async function main() {
     }, delayMs);
   };
 
-  try {
-    await page.getByText(CLICKS[0].name, { exact: true }).first().waitFor({ timeout: 120_000 });
-  } catch {
+  const readyFrame = await waitForFrame(tileLocator(CLICKS[0].name), 120_000);
+  if (readyFrame) {
+    console.log(`[grind] "${CLICKS[0].name}" found in frame: ${readyFrame.url()}`);
+  } else {
     console.log(`[grind] "${CLICKS[0].name}" did not appear within 2 minutes, starting anyway`);
   }
 
@@ -182,6 +210,7 @@ async function main() {
   setTimeout(async () => {
     try {
       console.log("DEBUG url:", page.url());
+      console.log("DEBUG frames:", page.frames().map((f) => f.url()));
       console.log("DEBUG localStorage keys:", await page.evaluate(() => Object.keys(localStorage)));
       const text = await page.evaluate(() => document.body.innerText);
       console.log("DEBUG page text:", text.slice(0, 800).replace(/\n+/g, " | "));
