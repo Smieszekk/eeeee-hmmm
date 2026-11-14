@@ -1,166 +1,145 @@
 (() => {
-  const START_DELAY_MS = 300;
-  
-  // === CONFIGURABLE INTERVALS (in milliseconds) & SETTINGS ===
-  const INTERVAL_ITEM19_MS = 100;   // How often Item 19 runs
-  const INTERVAL_BOOST_MS = 152500;   // How often Boost runs
-  const INTERVAL_COLLAB_MS = 301000;  // How often Collab runs
-  const TARGET_CHANNEL_ID = window.COLLAB_TARGET_CHANNEL_ID || 'UCTqJpW96pPJ4rhyqXBAvs0w';
-  // =========================================================
-
-  function extractConst(name, scriptsText) {
-    const re = new RegExp('const\\s+' + name + '\\s*=\\s*([\\s\\S]*?);');
-    const m = scriptsText.match(re);
-    if (!m) return null;
-    try {
-      return (new Function('return ' + m[1]))();
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // 1. Fetch Item 19 definition
-  function getItem19() {
-    if (window.CONTENT_COMMANDS && Array.isArray(window.CONTENT_COMMANDS)) {
-      if (window.CONTENT_COMMANDS[18]) return window.CONTENT_COMMANDS[18];
-    }
-    const scriptsText = Array.from(document.scripts).map(s => s.textContent || '').join('\n');
-    const content = extractConst('CONTENT_COMMANDS', scriptsText) || [];
-    return content[18] || null;
-  }
-
-  // 2. Fetch BOOST_COMMAND definition
-  function getBoostCommand() {
-    if (window.BOOST_COMMAND && typeof window.BOOST_COMMAND === 'object' && !Array.isArray(window.BOOST_COMMAND)) {
-      return window.BOOST_COMMAND;
-    }
-    const scriptsText = Array.from(document.scripts).map(s => s.textContent || '').join('\n');
-    const boost = extractConst('BOOST_COMMAND', scriptsText);
-    return (boost && typeof boost === 'object' && !Array.isArray(boost)) ? boost : null;
-  }
-
-  // 3. Fetch COLLAB_COMMAND definition
-  function getCollabCommand() {
-    if (window.COLLAB_COMMAND && typeof window.COLLAB_COMMAND === 'object' && !Array.isArray(window.COLLAB_COMMAND)) {
-      return window.COLLAB_COMMAND;
-    }
-    const scriptsText = Array.from(document.scripts).map(s => s.textContent || '').join('\n');
-    const collab = extractConst('COLLAB_COMMAND', scriptsText);
-    return (collab && typeof collab === 'object' && !Array.isArray(collab)) ? collab : null;
-  }
-
-  const item19Def = getItem19();
-  const boostDef = getBoostCommand();
-  const collabDef = getCollabCommand();
-
-  // Warn about each command that was not found
-  if (!item19Def) console.warn('WARN: Item command (CONTENT_COMMANDS[18]) NOT found.');
-  if (!boostDef) console.warn('WARN: BOOST_COMMAND NOT found.');
-  if (!collabDef) console.warn('WARN: COLLAB_COMMAND NOT found - collab will not run.');
-
-  if (!item19Def && !boostDef && !collabDef) {
-    console.error('No commands found (Item 19, BOOST_COMMAND, or COLLAB_COMMAND) — run this after the page has fully loaded.');
-    return;
-  }
-
-  // Clear any existing independent intervals/timeouts to prevent collisions
-  if (window._autoGrindItem19Interval) clearInterval(window._autoGrindItem19Interval);
-  if (window._autoGrindItem19Timeout) clearTimeout(window._autoGrindItem19Timeout);
-  if (window._autoGrindBoostInterval) clearInterval(window._autoGrindBoostInterval);
-  if (window._autoGrindBoostTimeout) clearTimeout(window._autoGrindBoostTimeout);
-  if (window._autoGrindCollabInterval) clearInterval(window._autoGrindCollabInterval);
-  if (window._autoGrindCollabTimeout) clearTimeout(window._autoGrindCollabTimeout);
-  if (window.stopAutoGrind) delete window.stopAutoGrind;
-
-  // Standard command executor for Item 19 and Boost
-  function executeStandardCommand(def) {
-    if (!def) return;
-    const cmd = { type: def.type, gain: def.gain, label: def.label };
-    const btn = document.createElement('button');
-    const labelEl = document.createElement('span');
-    labelEl.textContent = cmd.label;
-    btn.appendChild(labelEl);
-
-    if (typeof window.doCommand !== 'function') {
-      console.error('doCommand() not present on this page yet.');
-      return;
-    }
-
-    try {
-      window.doCommand(cmd, btn, labelEl);
-    } catch (err) {
-      console.error('doCommand threw:', err);
-    }
-  }
-
-  // Start Item 19 Loop
-  if (item19Def) {
-    window._autoGrindItem19Timeout = setTimeout(() => {
-      window._autoGrindItem19Interval = setInterval(() => {
-        executeStandardCommand(item19Def);
-      }, INTERVAL_ITEM19_MS);
-      console.log(`Item 19 loop started (${INTERVAL_ITEM19_MS}ms).`);
-    }, START_DELAY_MS);
-  }
-
-  // Start Boost Loop
-  if (boostDef) {
-    window._autoGrindBoostTimeout = setTimeout(() => {
-      window._autoGrindBoostInterval = setInterval(() => {
-        executeStandardCommand(boostDef);
-      }, INTERVAL_BOOST_MS);
-      console.log(`Boost loop started (${INTERVAL_BOOST_MS}ms).`);
-    }, START_DELAY_MS);
-  }
-
-  // Start Collab Loop using the custom Object.assign structure
-  if (collabDef) {
-    window._autoGrindCollabTimeout = setTimeout(() => {
-      window._autoGrindCollabInterval = setInterval(() => {
-        if (typeof window.doCommand !== 'function') {
-          console.error('doCommand() not present on this page yet.');
-          return;
-        }
-
-        try {
-          const collabObj = Object.assign({}, collabDef, { extra: { to: TARGET_CHANNEL_ID } });
-          const collabButton = document.createElement('button');
-          const labelEl = document.createElement('span');
-          labelEl.textContent = collabDef.label || 'Collab';
-          collabButton.appendChild(labelEl);
-
-          console.log('COLLAB sending:', JSON.stringify(collabObj));
-          const result = window.doCommand(collabObj, collabButton);
-          if (result && typeof result.then === 'function') {
-            result
-              .then(r => console.log('COLLAB result:', r))
-              .catch(e => console.error('COLLAB failed:', e));
-          }
-        } catch (err) {
-          console.error('doCommand (collab) threw:', err);
-        }
-      }, INTERVAL_COLLAB_MS);
-      console.log(`Collab loop started (${INTERVAL_COLLAB_MS}ms) for target channel ID: ${TARGET_CHANNEL_ID}`);
-    }, START_DELAY_MS);
-  }
-
-  // Unified stop function to clear all loops cleanly
-  window.stopAutoGrind = () => {
-    if (window._autoGrindItem19Timeout) clearTimeout(window._autoGrindItem19Timeout);
-    if (window._autoGrindItem19Interval) clearInterval(window._autoGrindItem19Interval);
-    if (window._autoGrindBoostTimeout) clearTimeout(window._autoGrindBoostTimeout);
-    if (window._autoGrindBoostInterval) clearInterval(window._autoGrindBoostInterval);
-    if (window._autoGrindCollabTimeout) clearTimeout(window._autoGrindCollabTimeout);
-    if (window._autoGrindCollabInterval) clearInterval(window._autoGrindCollabInterval);
-    
-    delete window._autoGrindItem19Timeout;
-    delete window._autoGrindItem19Interval;
-    delete window._autoGrindBoostTimeout;
-    delete window._autoGrindBoostInterval;
-    delete window._autoGrindCollabTimeout;
-    delete window._autoGrindCollabInterval;
-    delete window.stopAutoGrind;
-    
-    console.log('All auto-grind loops stopped.');
+  // ===== SETTINGS =====
+  // Tiles to click, by the name shown on the page (e.g. 'Music Video', 'Viral').
+  const CLICKS = [
+    { name: 'Music Video', everyMs: 100 },
+  ];
+  const BOOST = { name: 'Boost', everyMs: 152500 };       // page shows 2m 30s cooldown
+  const COLLAB = {
+    everyMs: 602000,                                       // cooldown seen in logs: 600 s
+    target: window.COLLAB_TARGET_CHANNEL_ID || 'UCTqJpW96pPJ4rhyqXBAvs0w',
+    waitAfterTypeMs: 1500,
   };
+  const DISSTRACK = {
+    everyMs: 1802000,                                       // set to the real Disstrack cooldown
+    target: window.DISSTRACK_TARGET_CHANNEL_ID || 'UCt_yPcT2JiSM0PMAwiyUzGw',   // <- put the target channel ID here
+    waitAfterTypeMs: 1500,
+  };
+  // ====================
+
+  const log = (...a) => console.log('[grind]', ...a);
+  const warn = (...a) => console.warn('[grind]', ...a);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  if (window.stopAutoGrind) window.stopAutoGrind();
+  const timers = [];
+  window.stopAutoGrind = () => {
+    timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+    delete window.stopAutoGrind;
+    log('all loops stopped');
+  };
+
+  function isVisible(el) {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+  }
+
+  function isDisabled(el) {
+    return el.disabled || el.getAttribute('aria-disabled') === 'true';
+  }
+
+  function clickableOf(el, buttonOnly) {
+    const btn = el.closest('button, [role="button"]');
+    if (btn) return btn;
+    if (buttonOnly) return null;
+    let cur = el;
+    for (let i = 0; i < 5 && cur && cur !== document.body; i++, cur = cur.parentElement) {
+      if (getComputedStyle(cur).cursor === 'pointer') return cur;
+    }
+    return null;
+  }
+
+  // Finds a clickable element by the text it shows (the tile name, or the button label)
+  function findByText(text, buttonOnly) {
+    const want = text.trim().toLowerCase();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const t = node.nodeValue.trim().toLowerCase();
+      if (t !== want && !t.startsWith(want + ' ')) continue;
+      const el = node.parentElement;
+      if (!el || !isVisible(el)) continue;
+      const target = clickableOf(el, buttonOnly);
+      if (target) return target;
+    }
+    return null;
+  }
+
+  function clickNamed(name) {
+    const el = findByText(name, false);
+    if (!el) return warn('not found on the page:', name);
+    if (isDisabled(el)) return;
+    el.click();
+  }
+
+  function setValue(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    input.focus();
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function findCollabInput(btn) {
+    let box = btn;
+    for (let i = 0; i < 5 && box; i++, box = box.parentElement) {
+      const inp = box.querySelector('input');
+      if (inp) return inp;
+    }
+    return null;
+  }
+
+  // Types a channel ID into the field next to the button and clicks it.
+  // label = text on the button ('Collab' or 'Disstrack').
+  async function doTargeted(label, cfg) {
+    if (!cfg.target || cfg.target.startsWith('WPISZ')) {
+      return warn(label + ': no target channel ID set, skipping');
+    }
+    const btn = findByText(label, true);
+    if (!btn) return warn(label + ' button not found');
+    const input = findCollabInput(btn);
+    if (!input) return warn(label + ' input not found');
+
+    setValue(input, cfg.target);
+    await sleep(cfg.waitAfterTypeMs);
+
+    const btn2 = findByText(label, true) || btn;
+    if (isDisabled(btn2)) {
+      return warn(label + ' button is still disabled after typing the ID. The site probably wants a search result to be picked first.');
+    }
+    btn2.click();
+    log(label + ' clicked for', cfg.target);
+  }
+
+  const doCollab = () => doTargeted('Collab', COLLAB);
+  const doDisstrack = () => doTargeted('Disstrack', DISSTRACK);
+
+  function every(ms, fn, delayMs = 0) {
+    timers.push(setTimeout(() => {
+      fn();
+      timers.push(setInterval(fn, ms));
+    }, delayMs));
+  }
+
+  function start() {
+    CLICKS.forEach((c) => every(c.everyMs, () => clickNamed(c.name)));
+    every(BOOST.everyMs, () => clickNamed(BOOST.name));
+    every(COLLAB.everyMs, doCollab);
+    every(DISSTRACK.everyMs, doDisstrack, 10000);
+    log('loops started:', CLICKS.map((c) => c.name).join(', '), '+ Boost + Collab + Disstrack');
+  }
+
+  // Wait until the page has rendered the tiles, then start
+  let waited = 0;
+  const poll = setInterval(() => {
+    waited++;
+    if (findByText(CLICKS[0].name, false)) {
+      clearInterval(poll);
+      start();
+    } else if (waited % 30 === 0) {
+      warn('still waiting for "' + CLICKS[0].name + '" to appear on the page (' + waited + 's)');
+    }
+  }, 1000);
+  timers.push(poll);
 })();
