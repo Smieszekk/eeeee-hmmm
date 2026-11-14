@@ -28,7 +28,7 @@ jobs:
         run: node runner.js
         env:
           LOCAL_STORAGE_JSON: ${{ secrets.LOCAL_STORAGE_JSON_1 }}
-          COLLAB_CHANNEL_ID: UCTqJpW96pPJ4rhyqXBAvs0w
+          COLLAB_CHANNEL_ID: UCg0qWTbn3R6j5K7YWbrMLNw
           TARGET_URL: https://tnstats.dev/web-grind
         
       - name: Upload debug screenshot
