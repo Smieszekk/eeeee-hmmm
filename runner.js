@@ -5,8 +5,9 @@ const { chromium } = require("playwright");
 const DEFAULT_TARGET_URL = "https://tnstats.dev/web-grind";
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 60_000;
 const HEARTBEAT_MS = 60_000;
-// End gracefully before the workflow's 360-minute hard timeout.
-const GRACEFUL_RUNTIME_MS = 359.9 * 60 * 1000;
+// End gracefully before the workflow's 355-minute job timeout.
+const RUNTIME_MINUTES = 345;
+const GRACEFUL_RUNTIME_MS = RUNTIME_MINUTES * 60 * 1000;
 const SCRIPT_FILES = ["script.js", "script2.js"];
 
 async function readScripts() {
@@ -52,6 +53,7 @@ async function main() {
   const localStorageData = getLocalStorageData();
 
   console.log(`Launching Chromium for ${targetUrl}`);
+  console.log(`LOCAL_STORAGE_JSON provided keys: ${Object.keys(localStorageData).length}`);
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
@@ -65,6 +67,13 @@ async function main() {
     console.error("[pageerror]", error);
   });
 
+  // Log every failed request (status 400+) so it is clear which one was rejected
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      console.log(`[http] ${response.status()} ${response.request().method()} ${response.url()}`);
+    }
+  });
+
   page.setDefaultNavigationTimeout(DEFAULT_NAVIGATION_TIMEOUT_MS);
 
   // Initialize localStorage for the target origin before the site loads.
@@ -74,7 +83,7 @@ async function main() {
     }
   }, localStorageData);
 
-  // --- NEW: per-account collab target channel (from COLLAB_CHANNEL_ID) ---
+  // Per-account collab target channel (from COLLAB_CHANNEL_ID)
   const collabTarget = process.env.COLLAB_CHANNEL_ID || "";
   await page.addInitScript((id) => {
     if (id) window.COLLAB_TARGET_CHANNEL_ID = id;
@@ -82,9 +91,18 @@ async function main() {
   if (collabTarget) {
     console.log(`Collab target channel for this job: ${collabTarget}`);
   }
-  // -----------------------------------------------------------------------
 
-  await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+  // Open the page, retrying a few times on temporary network/DNS errors
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+      break;
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      console.log(`goto failed (attempt ${attempt}): ${error.message.split("\n")[0]}. Retrying in 20s...`);
+      await new Promise((r) => setTimeout(r, 20_000));
+    }
+  }
   console.log("Page loaded. Evaluating scripts in the same page.");
 
   for (const { filename, source } of scripts) {
@@ -95,6 +113,19 @@ async function main() {
   }
 
   console.log("Scripts evaluated. Keeping the workflow alive.");
+
+  // DEBUG: after 15s print what the page looks like (key/cookie NAMES only, no values)
+  setTimeout(async () => {
+    try {
+      console.log("DEBUG url:", page.url());
+      console.log("DEBUG localStorage keys:", await page.evaluate(() => Object.keys(localStorage)));
+      console.log("DEBUG cookie names:", (await context.cookies()).map((c) => c.name));
+      const text = await page.evaluate(() => document.body.innerText);
+      console.log("DEBUG page text:", text.slice(0, 800).replace(/\n+/g, " | "));
+    } catch (error) {
+      console.error("DEBUG failed:", error);
+    }
+  }, 15_000);
 
   let shuttingDown = false;
   let heartbeatTimer;
@@ -125,7 +156,7 @@ async function main() {
   }, HEARTBEAT_MS);
 
   runtimeTimer = setTimeout(() => {
-    shutdown("Reached planned 350-minute runtime");
+    shutdown(`Reached planned ${RUNTIME_MINUTES}-minute runtime`);
   }, GRACEFUL_RUNTIME_MS);
 
   await new Promise(() => {});
