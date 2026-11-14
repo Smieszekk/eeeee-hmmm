@@ -56,7 +56,12 @@ async function main() {
   console.log(`LOCAL_STORAGE_JSON provided keys: ${Object.keys(localStorageData).length}`);
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  // Normal desktop user agent (without "HeadlessChrome") and a regular window size
+  const context = await browser.newContext({
+    userAgent: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browser.version()} Safari/537.36`,
+    viewport: { width: 1366, height: 768 },
+    locale: "en-US"
+  });
   const page = await context.newPage();
 
   page.on("console", (message) => {
@@ -67,10 +72,21 @@ async function main() {
     console.error("[pageerror]", error);
   });
 
-  // Log every failed request (status 400+) so it is clear which one was rejected
-  page.on("response", (response) => {
-    if (response.status() >= 400) {
-      console.log(`[http] ${response.status()} ${response.request().method()} ${response.url()}`);
+  // Log failed requests (400+) with the start of the server's message,
+  // plus the first 40 normal tnstats responses to see what the page loads
+  let netLogged = 0;
+  page.on("response", async (response) => {
+    const status = response.status();
+    const url = response.url().split("?")[0];
+    if (status >= 400) {
+      let body = "";
+      try {
+        body = (await response.text()).slice(0, 200).replace(/\s+/g, " ");
+      } catch {}
+      console.log(`[http] ${status} ${response.request().method()} ${url} ${body}`);
+    } else if (netLogged < 40 && url.includes("tnstats.dev")) {
+      netLogged++;
+      console.log(`[net] ${status} ${response.request().method()} ${url}`);
     }
   });
 
@@ -114,18 +130,20 @@ async function main() {
 
   console.log("Scripts evaluated. Keeping the workflow alive.");
 
-  // DEBUG: after 15s print what the page looks like (key/cookie NAMES only, no values)
+  // DEBUG: after 45s print what the page looks like (key/cookie NAMES only, no values)
+  // and save a screenshot to debug.png
   setTimeout(async () => {
     try {
       console.log("DEBUG url:", page.url());
       console.log("DEBUG localStorage keys:", await page.evaluate(() => Object.keys(localStorage)));
-      console.log("DEBUG cookie names:", (await context.cookies()).map((c) => c.name));
       const text = await page.evaluate(() => document.body.innerText);
       console.log("DEBUG page text:", text.slice(0, 800).replace(/\n+/g, " | "));
+      await page.screenshot({ path: "debug.png", fullPage: true });
+      console.log("DEBUG screenshot saved to debug.png");
     } catch (error) {
       console.error("DEBUG failed:", error);
     }
-  }, 15_000);
+  }, 45_000);
 
   let shuttingDown = false;
   let heartbeatTimer;
