@@ -8,7 +8,8 @@ const HEARTBEAT_MS = 60_000;
 // End gracefully before the workflow's 355-minute job timeout.
 const RUNTIME_MINUTES = 345;
 const GRACEFUL_RUNTIME_MS = RUNTIME_MINUTES * 60 * 1000;
-const SCRIPT_FILES = ["script.js", "script2.js"];
+// script2.js is no longer injected: the runner clicks with real mouse/keyboard events instead
+const SCRIPT_FILES = ["script.js"];
 
 async function readScripts() {
   return Promise.all(
@@ -129,6 +130,52 @@ async function main() {
   }
 
   console.log("Scripts evaluated. Keeping the workflow alive.");
+
+  // ---- Native grinding loops (real mouse/keyboard events, not synthetic JS clicks) ----
+  const CLICKS = [{ name: "Music Video", everyMs: 6300 }];      // tile name as shown on the page
+  const BOOST = { name: "Boost", everyMs: 152500 };              // page shows 2m 30s cooldown
+  const COLLAB = { everyMs: 602000, target: collabTarget };      // channel name or ID
+  const DISSTRACK = { everyMs: 602000, target: process.env.DISSTRACK_CHANNEL_ID || "" };
+
+  // Actions run one after another so they never fight over focus
+  let queue = Promise.resolve();
+  const enqueue = (label, fn) => {
+    queue = queue.then(fn).catch((e) => {
+      console.log(`[grind] ${label} failed: ${e.message.split("\n")[0]}`);
+    });
+  };
+
+  const clickTile = (name) => async () => {
+    await page.getByText(name, { exact: true }).first().click({ timeout: 5000 });
+  };
+
+  // index 0 = Collab field, index 1 = Disstrack field
+  const useField = (label, index, target) => async () => {
+    const input = page.locator('input[placeholder="Channel name or ID"]').nth(index);
+    await input.fill(target, { timeout: 5000 });
+    await page.waitForTimeout(1500);
+    await page.getByRole("button", { name: label, exact: true }).click({ timeout: 5000 });
+    console.log(`[grind] ${label} clicked for ${target}`);
+  };
+
+  const every = (ms, label, fn, delayMs = 0) => {
+    setTimeout(() => {
+      enqueue(label, fn);
+      setInterval(() => enqueue(label, fn), ms);
+    }, delayMs);
+  };
+
+  try {
+    await page.getByText(CLICKS[0].name, { exact: true }).first().waitFor({ timeout: 120_000 });
+  } catch {
+    console.log(`[grind] "${CLICKS[0].name}" did not appear within 2 minutes, starting anyway`);
+  }
+
+  CLICKS.forEach((c) => every(c.everyMs, c.name, clickTile(c.name)));
+  every(BOOST.everyMs, BOOST.name, clickTile(BOOST.name));
+  if (COLLAB.target) every(COLLAB.everyMs, "Collab", useField("Collab", 0, COLLAB.target), 5_000);
+  if (DISSTRACK.target) every(DISSTRACK.everyMs, "Disstrack", useField("Disstrack", 1, DISSTRACK.target), 15_000);
+  console.log("[grind] native loops started");
 
   // DEBUG: after 45s print what the page looks like (key/cookie NAMES only, no values)
   // and save a screenshot to debug.png
