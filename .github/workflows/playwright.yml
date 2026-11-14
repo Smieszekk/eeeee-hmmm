@@ -27,6 +27,6 @@ jobs:
       - name: Run grinder
         run: node runner.js
         env:
-          LOCAL_STORAGE_JSON: ${{ secrets.LOCAL_STORAGE_JSON_3 }}
+          LOCAL_STORAGE_JSON: ${{ secrets.LOCAL_STORAGE_JSON_1 }}
           COLLAB_CHANNEL_ID: UCTqJpW96pPJ4rhyqXBAvs0w
           TARGET_URL: https://tnstats.dev/web-grind
