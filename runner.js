@@ -2,7 +2,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { chromium } = require("playwright");
 
-const DEFAULT_TARGET_URL = "https://grinding.tnstats.dev/";
+const DEFAULT_TARGET_URL = "https://tnstats.dev/web-grind";
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 60_000;
 const HEARTBEAT_MS = 60_000;
 // End gracefully before the workflow's 360-minute hard timeout.
