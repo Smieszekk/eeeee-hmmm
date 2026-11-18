@@ -214,8 +214,8 @@ async function main() {
       console.log("DEBUG localStorage keys:", await page.evaluate(() => Object.keys(localStorage)));
       const text = await page.evaluate(() => document.body.innerText);
       console.log("DEBUG page text:", text.slice(0, 800).replace(/\n+/g, " | "));
-      await page.screenshot({ path: "debug.png", fullPage: true });
-      console.log("DEBUG screenshot saved to debug.png");
+      await page.screenshot({ path: "debug-start.png", fullPage: true });
+      console.log("DEBUG start screenshot saved to debug-start.png");
     } catch (error) {
       console.error("DEBUG failed:", error);
     }
@@ -232,6 +232,14 @@ async function main() {
 
     clearInterval(heartbeatTimer);
     clearTimeout(runtimeTimer);
+
+    // Screenshot of how the page looks at the end of the session
+    try {
+      await page.screenshot({ path: "debug-end.png", fullPage: true, timeout: 5000 });
+      console.log("DEBUG end screenshot saved to debug-end.png");
+    } catch (error) {
+      console.error("DEBUG end screenshot failed:", error.message);
+    }
 
     try {
       await browser.close();
