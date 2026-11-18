@@ -3,6 +3,10 @@ name: Playwright Grind
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   run:
     runs-on: ubuntu-24.04
@@ -30,12 +34,21 @@ jobs:
           LOCAL_STORAGE_JSON: ${{ secrets.LOCAL_STORAGE_JSON_1 }}
           COLLAB_CHANNEL_ID: UCg0qWTbn3R6j5K7YWbrMLNw
           TARGET_URL: https://tnstats.dev/web-grind
-        
-      - name: Upload debug screenshot
+          # DISSTRACK_CHANNEL_ID: ID_LUB_NAZWA_KANALU   # odkomentuj, zeby wlaczyc Disstrack
+
+      - name: Upload debug screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-screenshot
-          path: debug.png
+          name: debug-screenshots
+          path: |
+            debug-start.png
+            debug-end.png
           retention-days: 1
           if-no-files-found: ignore
+
+      - name: Start next run
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run playwright.yml --ref ${{ github.ref_name }}
